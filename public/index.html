@@ -2,19 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=600, height=600, initial-scale=1">
+<meta name="viewport" content="width=600, height=600, initial-scale=1.0, user-scalable=no">
 <meta name="description" content="Socket lifetime spike for Meta Ray-Ban Display">
 <meta name="mrbd-web-app-capable" content="yes">
 <link rel="icon" href="character.png" sizes="600x600">
 <title>Socket spike</title>
 <style>
+  /* Fill whatever viewport the device actually reports rather than
+     asserting 600px. The meta tag locks the scale; this keeps the layout
+     inside the frame even if the reported size is not exactly 600. */
   html, body {
-    margin: 0; padding: 0; width: 600px; height: 600px;
+    margin: 0; padding: 0; width: 100%; height: 100%;
     background: #000; overflow: hidden;
     font-family: system-ui, -apple-system, sans-serif;
     color: #f2e8d2;
   }
-  #stage { padding: 20px; box-sizing: border-box; height: 100%;
+  #stage { position: fixed; inset: 0; padding: 20px; box-sizing: border-box;
            display: flex; flex-direction: column; align-items: center; }
   #char { width: 132px; height: 132px; image-rendering: pixelated; flex-shrink: 0; }
   #char.thinking { opacity: 0.55; }
@@ -22,19 +25,22 @@
   #state.live { color: #fffaf0; }
   #state.down { color: #ef9f27; }
   #nums { font-size: 17px; color: #9c9483; margin-bottom: 10px; }
+  /* Absorbs the leftover space instead of demanding a fixed 150px, which
+     pushed the button off the bottom when the frame came up short. */
   #log { font-size: 15px; color: #6f6a5e; line-height: 1.45;
-         width: 100%; height: 150px; overflow: hidden; }
+         width: 100%; flex: 1 1 auto; min-height: 0; overflow: hidden; }
   #log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .focusable { font-size: 18px; border: 2px solid transparent; border-radius: 7px;
                padding: 9px 14px; width: 100%; box-sizing: border-box;
                text-align: center; color: #9c9483; background: none; }
   .focusable:focus { outline: none; border-color: #f0e2c8; color: #fffaf0; }
   #idle { display: flex; flex-direction: column; align-items: center;
-          flex: 1; width: 100%; }
-  #idle #imu { margin-top: auto; }
+          flex: 1 1 auto; min-height: 0; width: 100%; }
+  #idle #imu { margin-top: auto; flex-shrink: 0; }
   /* The card takes the whole surface. One decision at a time, never a
      card competing with the telemetry readout behind it. */
-  #card { width: 100%; flex: 1; display: flex; flex-direction: column; }
+  #card { width: 100%; flex: 1 1 auto; min-height: 0; overflow: hidden;
+          display: flex; flex-direction: column; }
   #cardLabel { font-size: 16px; letter-spacing: 0.1em; color: #5f5a4f; margin-bottom: 10px; }
   #cardBody { font-size: 30px; line-height: 1.28; color: #f7efdc; margin-bottom: 22px; }
   #cardOpts { display: flex; flex-direction: column; gap: 10px; }
@@ -138,6 +144,11 @@
   // Meta's docs, so establish what exists before testing how it behaves.
   // A socket that never opened must not be read as a backgrounding failure.
   function probe() {
+    // Report the frame the device actually gives us, rather than assuming
+    // it matches the 600x600 the docs specify.
+    mark('viewport', window.innerWidth + 'x' + window.innerHeight
+                   + ' dpr' + (window.devicePixelRatio || 1)
+                   + ' screen' + screen.width + 'x' + screen.height);
     mark('has-ws', typeof WebSocket);
     mark('has-es', typeof EventSource);
     mark('has-fetch', typeof fetch);
