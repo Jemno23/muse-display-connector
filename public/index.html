@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=600, height=600, initial-scale=1">
+<meta name="description" content="Socket lifetime spike for Meta Ray-Ban Display">
+<meta name="mrbd-web-app-capable" content="yes">
+<link rel="icon" href="character.png" sizes="600x600">
+<title>Socket spike</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 600px; height: 600px;
+    background: #000; overflow: hidden;
+    font-family: system-ui, -apple-system, sans-serif;
+    color: #f2e8d2;
+  }
+  #stage { padding: 20px; box-sizing: border-box; height: 100%;
+           display: flex; flex-direction: column; align-items: center; }
+  #char { width: 132px; height: 132px; image-rendering: pixelated; flex-shrink: 0; }
+  #char.thinking { opacity: 0.55; }
+  #state { font-size: 28px; margin: 6px 0 2px; letter-spacing: 0.02em; }
+  #state.live { color: #fffaf0; }
+  #state.down { color: #ef9f27; }
+  #nums { font-size: 17px; color: #9c9483; margin-bottom: 10px; }
+  #log { font-size: 15px; color: #6f6a5e; line-height: 1.45;
+         width: 100%; height: 150px; overflow: hidden; }
+  #log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .focusable { font-size: 18px; border: 2px solid transparent; border-radius: 7px;
+               padding: 9px 14px; width: 100%; box-sizing: border-box;
+               text-align: center; color: #9c9483; background: none; }
+  .focusable:focus { outline: none; border-color: #f0e2c8; color: #fffaf0; }
+  #idle { display: flex; flex-direction: column; align-items: center;
+          flex: 1; width: 100%; }
+  #idle #imu { margin-top: auto; }
+  /* The card takes the whole surface. One decision at a time, never a
+     card competing with the telemetry readout behind it. */
+  #card { width: 100%; flex: 1; display: flex; flex-direction: column; }
+  #cardLabel { font-size: 16px; letter-spacing: 0.1em; color: #5f5a4f; margin-bottom: 10px; }
+  #cardBody { font-size: 30px; line-height: 1.28; color: #f7efdc; margin-bottom: 22px; }
+  #cardOpts { display: flex; flex-direction: column; gap: 10px; }
+  #cardOpts .focusable { font-size: 24px; padding: 16px 22px; text-align: left; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <img id="char" src="character.png" alt="">
+
+  <div id="card" hidden>
+    <div id="cardLabel"></div>
+    <div id="cardBody"></div>
+    <div id="cardOpts"></div>
+  </div>
+
+  <div id="idle">
+    <div id="state" class="down">connecting</div>
+    <div id="nums">--</div>
+    <div id="log"></div>
+    <button class="focusable" id="imu">Enable sensors</button>
+  </div>
+</div>
+<script>
+(function () {
+  // The display id must match the one the connector derives from the
+  // credential, or cards are written where this page never looks. Until QR
+  // pairing exists it comes from the URL and is remembered — the same
+  // shape the claim URL will take. Get the value from GET /whoami.
+  var SESSION = (function () {
+    var q = new URLSearchParams(location.search).get('s');
+    try {
+      if (q) { localStorage.setItem('spike.session', q); return q; }
+      return localStorage.getItem('spike.session') || 'unpaired';
+    } catch (e) { return q || 'unpaired'; }
+  })();
+  var T0 = Date.now();
+  var LS_KEY = 'spike.events';
+  var pings = 0, beacons = 0, reconnects = 0, ws = null, backoff = 1000, everOpened = false;
+
+  var elState = document.getElementById('state');
+  var elNums  = document.getElementById('nums');
+  var elLog   = document.getElementById('log');
+  var elChar  = document.getElementById('char');
+  var elIdle  = document.getElementById('idle');
+  var elCard  = document.getElementById('card');
+  var elLabel = document.getElementById('cardLabel');
+  var elBody  = document.getElementById('cardBody');
+  var elOpts  = document.getElementById('cardOpts');
+
+  function secs() { return Math.round((Date.now() - T0) / 1000); }
+
+  // Buffer events locally so nothing is lost while the socket is down,
+  // and so a kill/relaunch still yields a record.
+  function buffer(ev) {
+    try {
+      var all = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+      all.push(ev);
+      if (all.length > 400) all = all.slice(-400);
+      localStorage.setItem(LS_KEY, JSON.stringify(all));
+    } catch (e) { /* storage can throw; the run still works */ }
+  }
+
+  function drain() {
+    var all = [];
+    try { all = JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) {}
+    if (!all.length) return;
+    fetch('/api/flush', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session: SESSION, events: all })
+    }).then(function () {
+      try { localStorage.removeItem(LS_KEY); } catch (e) {}
+    }).catch(function () { /* retry on next connect */ });
+  }
+
+  function mark(kind, detail) {
+    var ev = { t: Date.now(), at: secs(), kind: kind, detail: detail || '',
+               vis: document.visibilityState, session: SESSION };
+    buffer(ev);
+    show(kind + (detail ? ' ' + detail : ''));
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(ev));
+  }
+
+  function show(line) {
+    var d = document.createElement('div');
+    d.textContent = secs() + 's  ' + line;
+    elLog.insertBefore(d, elLog.firstChild);
+    while (elLog.children.length > 9) elLog.removeChild(elLog.lastChild);
+  }
+
+  function paint() {
+    var live = ws && ws.readyState === 1;
+    elState.textContent = live ? 'socket live' : 'socket down';
+    elState.className = live ? 'live' : 'down';
+    elNums.textContent = secs() + 's  ping ' + pings + '  beacon ' + beacons
+                       + '  reconnect ' + reconnects;
+  }
+
+  // Networking is on neither the supported nor the unsupported list in
+  // Meta's docs, so establish what exists before testing how it behaves.
+  // A socket that never opened must not be read as a backgrounding failure.
+  function probe() {
+    mark('has-ws', typeof WebSocket);
+    mark('has-es', typeof EventSource);
+    mark('has-fetch', typeof fetch);
+    if (typeof WebSocket === 'undefined') {
+      mark('verdict', 'NO WEBSOCKET ON DEVICE');
+      elState.textContent = 'no websocket';
+      return false;
+    }
+    return true;
+  }
+
+  function connect() {
+    if (typeof WebSocket === 'undefined') return;
+    var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    ws = new WebSocket(proto + location.host + '/ws?s=' + SESSION);
+    ws.onopen = function () {
+      backoff = 1000;
+      everOpened = true;
+      mark('ws-open');
+      drain();
+      paint();
+    };
+    ws.onclose = function (e) {
+      // Distinguish "never worked here" from "worked, then dropped".
+      mark(everOpened ? 'ws-close' : 'ws-never-opened', 'code=' + e.code);
+      paint();
+      retry();
+    };
+    ws.onerror = function () { mark('ws-error'); };
+  }
+
+  function retry() {
+    reconnects++;
+    setTimeout(connect, backoff);
+    backoff = Math.min(backoff * 2, 15000);
+  }
+
+  // --- card loop ------------------------------------------------------
+  // Short-poll, not long-poll. A serverless function caps how long a
+  // request may live, and a second or two of latency is nothing against
+  // an agent whose cadence is minutes. Backs off while nothing happens.
+  var queue = [], showing = null, quietSince = Date.now();
+
+  function pollDelay() {
+    var quiet = Date.now() - quietSince;
+    if (quiet > 180000) return 12000;
+    if (quiet > 60000) return 6000;
+    return 2000;
+  }
+
+  function poll() {
+    fetch('/api/pending?s=' + SESSION)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var cards = (d && d.cards) || [];
+        if (!cards.length) return;
+        quietSince = Date.now();
+        mark('cards', String(cards.length));
+        queue = queue.concat(cards);
+        if (!showing) next();
+      })
+      .catch(function () { /* offline is not an error here */ })
+      .then(function () { setTimeout(poll, pollDelay()); });
+  }
+
+  function next() {
+    showing = queue.shift() || null;
+    if (!showing) {
+      elCard.hidden = true;
+      elIdle.hidden = false;
+      return;
+    }
+    var card = showing;
+    elLabel.textContent = card.title || '';
+    elBody.textContent = card.kind === 'notify'
+      ? card.line
+      : card.body + (card.detail ? ' — ' + card.detail : '');
+    elOpts.textContent = '';
+    elIdle.hidden = true;
+    elCard.hidden = false;
+
+    // A dim line asks nothing of the wearer, so it clears itself.
+    if (card.kind === 'notify') {
+      setTimeout(function () { if (showing === card) next(); }, 6000);
+      return;
+    }
+
+    (card.options || []).forEach(function (label, i) {
+      var b = document.createElement('button');
+      b.className = 'focusable';
+      b.textContent = label;
+      b.addEventListener('click', function () { answer(card, label, i); });
+      elOpts.appendChild(b);
+    });
+    var first = elOpts.querySelector('.focusable');
+    if (first) first.focus();
+  }
+
+  function answer(card, choice, index) {
+    quietSince = Date.now();
+    mark('pinch', choice);
+    fetch('/api/answer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket: card.ticket, choice: choice, index: index })
+    }).catch(function () {});
+    next();
+  }
+
+  // Two independent heartbeats. If the socket dies but beacons keep
+  // arriving, the page is alive and only the connection dropped. If both
+  // stop, the whole app was suspended.
+  setInterval(function () {
+    if (ws && ws.readyState === 1) { pings++; ws.send(JSON.stringify(
+      { t: Date.now(), at: secs(), kind: 'ping', n: pings, session: SESSION })); }
+    paint();
+  }, 5000);
+
+  setInterval(function () {
+    beacons++;
+    fetch('/api/beacon?s=' + SESSION + '&n=' + beacons + '&at=' + secs()
+          + '&vis=' + document.visibilityState).catch(function () {});
+  }, 5000);
+
+  document.addEventListener('visibilitychange', function () {
+    mark('visibility', document.visibilityState);
+    elChar.className = document.visibilityState === 'visible' ? '' : 'thinking';
+  });
+  window.addEventListener('pagehide', function () { mark('pagehide'); });
+  window.addEventListener('pageshow', function () { mark('pageshow'); });
+  window.addEventListener('freeze', function () { mark('freeze'); });
+  window.addEventListener('resume', function () { mark('resume'); });
+  window.addEventListener('online', function () { mark('online'); });
+  window.addEventListener('offline', function () { mark('offline'); });
+
+  // The IMU permission must come from a user gesture, so dwell-to-think
+  // needs this pinch before head stillness can be read.
+  document.getElementById('imu').addEventListener('click', function () {
+    function start() {
+      window.addEventListener('deviceorientation', function once(e) {
+        mark('imu-ok', 'alpha=' + Math.round(e.alpha || 0));
+        window.removeEventListener('deviceorientation', once);
+      });
+    }
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().then(function (s) {
+        mark('imu-perm', s);
+        if (s === 'granted') start();
+      }).catch(function () { mark('imu-perm', 'error'); });
+    } else {
+      mark('imu-perm', 'implicit');
+      start();
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    // Only what is actually on screen: a hidden card's buttons must not
+    // capture the D-pad from the view the wearer can see.
+    var f = Array.prototype.slice.call(document.querySelectorAll('.focusable'))
+              .filter(function (el) { return el.offsetParent !== null; });
+    if (!f.length) return;
+    var i = f.indexOf(document.activeElement);
+    switch (e.key) {
+      case 'ArrowUp': case 'ArrowLeft':
+        f[i > 0 ? i - 1 : f.length - 1].focus(); break;
+      case 'ArrowDown': case 'ArrowRight':
+        f[i < f.length - 1 ? i + 1 : 0].focus(); break;
+      case 'Enter':
+        if (document.activeElement.classList.contains('focusable'))
+          document.activeElement.click();
+        break;
+      case 'Escape': mark('escape'); break;
+      default: return;
+    }
+    e.preventDefault();
+  });
+
+  mark('load');
+  if (probe()) connect();
+  poll();
+  paint();
+})();
+</script>
+</body>
+</html>
