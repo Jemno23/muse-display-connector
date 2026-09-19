@@ -1,0 +1,8 @@
+{
+  "name": "muse-display-connector",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node server.mjs" },
+  "devDependencies": { "ws": "^8.18.0" },
+  "engines": { "node": ">=22" }
+}
