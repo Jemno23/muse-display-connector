@@ -1,0 +1,196 @@
+<title>Muse Display Screens</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,300;6..72,400&display=swap">
+<style>
+  :root {
+    --ground: #E8E6E0;
+    --surface: #F5F4F0;
+    --ink: #1B1A17;
+    --muted: #6D6A62;
+    --hair: #CFCCC3;
+    --glow: #F0E2C8;
+    --display: "Bricolage Grotesque", "Helvetica Neue", sans-serif;
+    --body: "Newsreader", Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #171613; --surface: #201E1A; --ink: #EFEDE6;
+      --muted: #918D83; --hair: #35322C;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #171613; --surface: #201E1A; --ink: #EFEDE6;
+    --muted: #918D83; --hair: #35322C;
+  }
+
+  body { background: var(--ground); color: var(--ink); font-family: var(--body); }
+  .page { max-width: 1120px; margin: 0 auto; padding: 0 16px; padding-block: 56px 72px; }
+
+  h1 { font-family: var(--display); font-weight: 700; font-size: clamp(34px, 5vw, 52px);
+       line-height: 1.02; letter-spacing: -0.02em; margin: 0 0 18px; text-wrap: balance; }
+  .lede { font-size: 19px; line-height: 1.65; font-weight: 300; max-width: 62ch; margin: 0 0 28px; }
+
+  .spec { font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; color: var(--muted);
+          display: flex; flex-wrap: wrap; gap: 8px 22px; padding-block: 16px;
+          border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+
+  .bar { display: flex; align-items: baseline; justify-content: space-between;
+         gap: 16px; flex-wrap: wrap; padding-block: 26px 22px; }
+  .bar p { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0; max-width: 46ch; }
+  button { font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; color: var(--ink);
+           background: var(--surface); border: 1px solid var(--hair); border-radius: 999px;
+           padding: 10px 20px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+             gap: 40px 32px; }
+  figure { margin: 0; display: flex; flex-direction: column; gap: 12px; }
+  .frame { width: 300px; height: 300px; max-width: 100%; border-radius: 10px;
+           overflow: hidden; background: #000; position: relative; }
+  .gallery.world .frame {
+    background: linear-gradient(#A9C6DF 0%, #C6D8E6 38%, #8E9A84 38%, #6E7A64 72%, #565F4E 100%);
+  }
+  .gallery.world .screen { mix-blend-mode: screen; }
+
+  /* Everything inside .screen is at true display scale: 600 x 600. */
+  .screen { width: 600px; height: 600px; transform: scale(0.5); transform-origin: top left;
+            background: #000; box-sizing: border-box; padding: 40px;
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex; flex-direction: column; align-items: center; }
+  .screen img { width: 140px; height: 140px; image-rendering: pixelated; flex-shrink: 0; }
+  .screen img.small { width: 92px; height: 92px; }
+  .eyebrow { font-size: 16px; letter-spacing: 0.1em; color: #5F5A4F; align-self: flex-start;
+             margin-bottom: 10px; }
+  .say { font-size: 30px; line-height: 1.28; color: #F7EFDC; align-self: flex-start;
+         margin-bottom: 22px; }
+  .say.center { align-self: center; text-align: center; margin-bottom: 0; }
+  .opt { font-size: 24px; color: #6F6A5E; padding: 16px 22px; width: 100%; box-sizing: border-box; }
+  .opt.on { color: #FFFAF0; border: 3px solid var(--glow); border-radius: 12px; }
+  .code { font-family: ui-monospace, monospace; font-size: 86px; letter-spacing: 0.16em;
+          color: #FFFAF0; margin: 18px 0 14px; }
+  .dim { font-size: 20px; color: #6F6A5E; }
+  .stack { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+  .row { width: 100%; display: flex; justify-content: space-between; font-size: 22px;
+         color: #B6AE9C; padding-bottom: 12px; border-bottom: 2px solid #26241E; }
+  .push { margin-top: auto; }
+
+  figcaption { font-family: var(--display); font-weight: 500; font-size: 17px; }
+  figcaption span { display: block; font-family: var(--body); font-weight: 300;
+                    font-size: 15px; line-height: 1.5; color: var(--muted); margin-top: 3px; }
+
+  .note { margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--hair);
+          font-size: 17px; line-height: 1.7; font-weight: 300; max-width: 64ch; }
+  .note strong { font-family: var(--display); font-weight: 700; }
+</style>
+
+<div class="page">
+  <h1>Muse Display Screens</h1>
+  <p class="lede">Every frame below is built at the real 600&times;600 and scaled to half, so the
+  type sizes and stroke weights in the markup are the ones that ship. Black is transparent on an
+  additive waveguide &mdash; switch the view to see what the wearer actually gets.</p>
+
+  <div class="spec">
+    <span>600 &times; 600 px</span><span>no scroll</span><span>additive waveguide</span>
+    <span>D-pad + Enter + Escape</span><span>body min 16px</span><span>no camera, mic or text input</span>
+  </div>
+
+  <div class="bar">
+    <p id="hint">Showing the design surface. Black renders as nothing on real glass.</p>
+    <button id="toggle" aria-pressed="false">SEE IT OVER THE WORLD</button>
+  </div>
+
+  <div class="gallery" id="gallery">
+
+    <figure>
+      <div class="frame"><div class="screen">
+        <img src="character.png" alt="">
+        <div class="say center">Nothing needs you</div>
+        <div class="dim push">last check 4 min ago</div>
+      </div></div>
+      <figcaption>Ambient<span>The resting state. It has to be worth leaving open all day, because nothing can wake the display.</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame"><div class="screen">
+        <img src="character.png" class="small" alt="">
+        <div class="eyebrow">HEADS UP</div>
+        <div class="say">Fare dropped &pound;180. Hold expires tonight.</div>
+        <div class="dim push">middle pinch for more</div>
+      </div></div>
+      <figcaption>Notify<span>One line, under seven words where it can be. Read in a glance while walking.</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame"><div class="screen">
+        <img src="character.png" class="small" alt="">
+        <div class="eyebrow">WHICH ONE</div>
+        <div class="say">Two drafts ready for Dana</div>
+        <div class="stack">
+          <div class="opt on">The short one</div>
+          <div class="opt">The one with numbers</div>
+        </div>
+      </div></div>
+      <figcaption>Choice<span>The focus ring is the whole interaction model. Arrows move it, Enter commits.</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame"><div class="screen">
+        <img src="character.png" class="small" alt="">
+        <div class="eyebrow">APPROVE</div>
+        <div class="say">Send the revised quote to Dana?</div>
+        <div class="stack">
+          <div class="opt on">Send it</div>
+          <div class="opt">Not now</div>
+        </div>
+      </div></div>
+      <figcaption>Approval<span>Out-of-band by construction. The card is on your head, not in the agent's runtime.</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame"><div class="screen">
+        <img src="character.png" class="small" alt="">
+        <div class="say center">Tell Muse this code</div>
+        <div class="code">K7QW</div>
+        <div class="dim">expires in 90 seconds</div>
+      </div></div>
+      <figcaption>Pairing<span>The fallback when the QR has expired. The agent is the auth channel &mdash; you never type here.</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame"><div class="screen">
+        <img src="character.png" class="small" alt="">
+        <div class="eyebrow">WHILE YOU WERE OUT</div>
+        <div class="stack">
+          <div class="row"><span>Quote sent</span><span>11:04</span></div>
+          <div class="row"><span>Flight held</span><span>12:20</span></div>
+          <div class="row"><span>Needs you</span><span>now</span></div>
+        </div>
+      </div></div>
+      <figcaption>Queued<span>What the honest architecture looks like. Cards wait here until the app is open again.</span></figcaption>
+    </figure>
+
+  </div>
+
+  <p class="note"><strong>One thing to fix in the sprite.</strong> Flip to the world view and watch
+  the face. The eyes and smile are dark, and dark means absent on an additive display &mdash; over a
+  bright sky the expression drops out and only the silhouette survives. A 1&ndash;2px bright ring
+  around each eye and the smile, plus a brighter rim on the body edge, keeps the character readable
+  against sky, pavement and a white wall alike.</p>
+</div>
+
+<script>
+  (function () {
+    var g = document.getElementById('gallery');
+    var b = document.getElementById('toggle');
+    var hint = document.getElementById('hint');
+    b.addEventListener('click', function () {
+      var on = g.classList.toggle('world');
+      b.setAttribute('aria-pressed', String(on));
+      b.textContent = on ? 'BACK TO THE DESIGN' : 'SEE IT OVER THE WORLD';
+      hint.textContent = on
+        ? 'Screen-blended over a bright scene, which is roughly what the waveguide does.'
+        : 'Showing the design surface. Black renders as nothing on real glass.';
+    });
+  })();
+</script>
