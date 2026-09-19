@@ -19,21 +19,24 @@
   }
   #stage { position: fixed; inset: 0; padding: 20px; box-sizing: border-box;
            display: flex; flex-direction: column; align-items: center; }
-  #char { width: 132px; height: 132px; image-rendering: pixelated; flex-shrink: 0; }
+  /* Smaller mark, so the text starts higher in the frame. */
+  #char { width: 96px; height: 96px; image-rendering: pixelated; flex-shrink: 0; }
   #char.thinking { opacity: 0.55; }
-  #state { font-size: 28px; margin: 6px 0 2px; letter-spacing: 0.02em; }
-  #state.live { color: #fffaf0; }
-  #state.down { color: #ef9f27; }
-  #nums { font-size: 17px; color: #9c9483; margin-bottom: 10px; }
+  #state { font-size: 30px; font-weight: 600; margin: 8px 0 4px;
+           letter-spacing: 0.02em; color: #ffffff; }
+  #state.live { color: #ffffff; }
+  #state.down { color: #ffc24d; }
+  #nums { font-size: 18px; font-weight: 500; color: #ffe9c4; margin-bottom: 12px; }
   /* Absorbs the leftover space instead of demanding a fixed 150px, which
      pushed the button off the bottom when the frame came up short. */
-  #log { font-size: 15px; color: #6f6a5e; line-height: 1.45;
+  #log { font-size: 16px; font-weight: 500; color: #d9c9a4; line-height: 1.5;
          width: 100%; flex: 1 1 auto; min-height: 0; overflow: hidden; }
   #log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .focusable { font-size: 18px; border: 2px solid transparent; border-radius: 7px;
-               padding: 9px 14px; width: 100%; box-sizing: border-box;
-               text-align: center; color: #9c9483; background: none; }
-  .focusable:focus { outline: none; border-color: #f0e2c8; color: #fffaf0; }
+  .focusable { font-size: 20px; font-weight: 500; border: 3px solid transparent;
+               border-radius: 7px; padding: 10px 14px; width: 100%;
+               box-sizing: border-box; text-align: center;
+               color: #ffe9c4; background: none; }
+  .focusable:focus { outline: none; border-color: #ffffff; color: #ffffff; }
   #idle { display: flex; flex-direction: column; align-items: center;
           flex: 1 1 auto; min-height: 0; width: 100%; }
   #idle #imu { margin-top: auto; flex-shrink: 0; }
@@ -41,10 +44,15 @@
      card competing with the telemetry readout behind it. */
   #card { width: 100%; flex: 1 1 auto; min-height: 0; overflow: hidden;
           display: flex; flex-direction: column; }
-  #cardLabel { font-size: 16px; letter-spacing: 0.1em; color: #5f5a4f; margin-bottom: 10px; }
-  #cardBody { font-size: 30px; line-height: 1.28; color: #f7efdc; margin-bottom: 22px; }
-  #cardOpts { display: flex; flex-direction: column; gap: 10px; }
-  #cardOpts .focusable { font-size: 24px; padding: 16px 22px; text-align: left; }
+  /* Hierarchy comes from size and weight, never from dimness. A mid-grey
+     is the worst case on an additive display: too faint to read outdoors,
+     still bright enough to haze the view behind it. */
+  #cardLabel { font-size: 18px; font-weight: 700; letter-spacing: 0.12em;
+               color: #ffc98a; margin-bottom: 12px; }
+  #cardBody { font-size: 34px; font-weight: 600; line-height: 1.25;
+              color: #ffffff; margin-bottom: 24px; }
+  #cardOpts { display: flex; flex-direction: column; gap: 12px; }
+  #cardOpts .focusable { font-size: 26px; padding: 16px 22px; text-align: left; }
 </style>
 </head>
 <body>
