@@ -1,6 +1,10 @@
 import { openStore } from '../lib/store.mjs';
 import { handleMcp } from '../lib/api.mjs';
 
+// The bounded wait needs to finish inside the function's lifetime, or the
+// caller gets a dropped connection instead of a pending response.
+export const maxDuration = 60;
+
 const store = openStore();
 
 export default async function handler(req, res) {
