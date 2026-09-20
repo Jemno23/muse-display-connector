@@ -40,6 +40,13 @@
   #idle { display: flex; flex-direction: column; align-items: center;
           flex: 1 1 auto; min-height: 0; width: 100%; }
   #idle #imu { margin-top: auto; flex-shrink: 0; }
+  /* The resting state: the character, one line, and how fresh it is.
+     Nothing else earns a place on a surface you leave open all day. */
+  #ambient { font-size: 30px; font-weight: 600; color: #ffffff;
+             text-align: center; margin-top: 26px; }
+  #since { font-size: 18px; font-weight: 500; color: #ffe9c4; margin-top: 10px; }
+  #debug { width: 100%; flex: 1 1 auto; min-height: 0; margin-top: 16px;
+           display: flex; flex-direction: column; align-items: center; }
   /* The card takes the whole surface. One decision at a time, never a
      card competing with the telemetry readout behind it. */
   #card { width: 100%; flex: 1 1 auto; min-height: 0; overflow: hidden;
@@ -66,10 +73,16 @@
   </div>
 
   <div id="idle">
-    <div id="state" class="down">connecting</div>
-    <div id="nums">--</div>
-    <div id="log"></div>
-    <button class="focusable" id="imu">Enable sensors</button>
+    <div id="ambient">Nothing needs you</div>
+    <div id="since">connecting</div>
+    <button class="focusable" id="imu" hidden>Pinch to enable sensors</button>
+    <!-- Instrumentation keeps running either way; the server log is what
+         the backgrounding test reads. Append ?debug=1 to see it on glass. -->
+    <div id="debug" hidden>
+      <div id="state" class="down">connecting</div>
+      <div id="nums">--</div>
+      <div id="log"></div>
+    </div>
   </div>
 </div>
 <script>
@@ -94,6 +107,10 @@
   var elLog   = document.getElementById('log');
   var elChar  = document.getElementById('char');
   var elIdle  = document.getElementById('idle');
+  var elAmb   = document.getElementById('ambient');
+  var elSince = document.getElementById('since');
+  var elDebug = document.getElementById('debug');
+  var elImu   = document.getElementById('imu');
   var elCard  = document.getElementById('card');
   var elLabel = document.getElementById('cardLabel');
   var elBody  = document.getElementById('cardBody');
@@ -140,7 +157,17 @@
     while (elLog.children.length > 9) elLog.removeChild(elLog.lastChild);
   }
 
+  function ago(ms) {
+    var s = Math.round(ms / 1000);
+    if (s < 10) return 'just now';
+    if (s < 60) return s + 's ago';
+    var m = Math.round(s / 60);
+    return m === 1 ? 'a minute ago' : m + ' min ago';
+  }
+
   function paint() {
+    elSince.textContent = lastCheck ? 'checked ' + ago(Date.now() - lastCheck)
+                                    : 'connecting';
     var live = ws && ws.readyState === 1;
     elState.textContent = live ? 'socket live' : 'socket down';
     elState.className = live ? 'live' : 'down';
@@ -198,7 +225,7 @@
   // Short-poll, not long-poll. A serverless function caps how long a
   // request may live, and a second or two of latency is nothing against
   // an agent whose cadence is minutes. Backs off while nothing happens.
-  var queue = [], showing = null, quietSince = Date.now();
+  var queue = [], showing = null, quietSince = Date.now(), lastCheck = 0;
 
   function pollDelay() {
     var quiet = Date.now() - quietSince;
@@ -211,8 +238,9 @@
     fetch('/api/pending?s=' + SESSION)
       .then(function (r) { return r.json(); })
       .then(function (d) {
+        lastCheck = Date.now();
         var cards = (d && d.cards) || [];
-        if (!cards.length) return;
+        if (!cards.length) { paint(); return; }
         quietSince = Date.now();
         mark('cards', String(cards.length));
         queue = queue.concat(cards);
@@ -294,10 +322,14 @@
 
   // The IMU permission must come from a user gesture, so dwell-to-think
   // needs this pinch before head stillness can be read.
-  document.getElementById('imu').addEventListener('click', function () {
+  elImu.addEventListener('click', function () {
     function start() {
       window.addEventListener('deviceorientation', function once(e) {
         mark('imu-ok', 'alpha=' + Math.round(e.alpha || 0));
+        // Granted once, never asked again — the prompt has no business
+        // sitting on a resting screen forever.
+        try { localStorage.setItem('spike.imu', 'ok'); } catch (err) {}
+        elImu.hidden = true;
         window.removeEventListener('deviceorientation', once);
       });
     }
@@ -334,6 +366,13 @@
     }
     e.preventDefault();
   });
+
+  // Ask for the sensor grant only until it has been given, and keep the
+  // diagnostics one query parameter away rather than on the resting screen.
+  try {
+    elImu.hidden = localStorage.getItem('spike.imu') === 'ok';
+  } catch (e) { elImu.hidden = false; }
+  if (new URLSearchParams(location.search).has('debug')) elDebug.hidden = false;
 
   mark('load');
   if (probe()) connect();
