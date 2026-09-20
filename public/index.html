@@ -232,13 +232,16 @@
   // Short-poll, not long-poll. A serverless function caps how long a
   // request may live, and a second or two of latency is nothing against
   // an agent whose cadence is minutes. Backs off while nothing happens.
-  var queue = [], showing = null, quietSince = Date.now(), lastCheck = 0;
+  var queue = [], showing = null, lastCheck = 0;
 
+  // Back off on visibility, not on elapsed quiet. The old time-based
+  // ladder dropped to 12s after a few idle minutes, so the first card
+  // after a quiet spell could take 12s to appear — burning half the
+  // agent's wait window before the wearer had seen anything. If the
+  // surface is in view, someone is there: poll fast. If it is hidden,
+  // nobody is looking and cheap is fine.
   function pollDelay() {
-    var quiet = Date.now() - quietSince;
-    if (quiet > 180000) return 12000;
-    if (quiet > 60000) return 6000;
-    return 2000;
+    return document.visibilityState === 'visible' ? 2000 : 15000;
   }
 
   function poll() {
@@ -248,7 +251,6 @@
         lastCheck = Date.now();
         var cards = (d && d.cards) || [];
         if (!cards.length) { paint(); return; }
-        quietSince = Date.now();
         mark('cards', String(cards.length));
         queue = queue.concat(cards);
         if (!showing) next();
@@ -395,7 +397,6 @@
   setInterval(dwellTick, 200);
 
   function answer(card, choice, index) {
-    quietSince = Date.now();
     mark('pinch', choice);
     fetch('/api/answer', {
       method: 'POST',
