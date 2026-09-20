@@ -106,7 +106,7 @@
   })();
   var T0 = Date.now();
   var LS_KEY = 'spike.events';
-  var pings = 0, beacons = 0, reconnects = 0, ws = null, backoff = 1000, everOpened = false;
+  var beacons = 0;
 
   var elState = document.getElementById('state');
   var elNums  = document.getElementById('nums');
@@ -154,7 +154,6 @@
                vis: document.visibilityState, session: SESSION };
     buffer(ev);
     show(kind + (detail ? ' ' + detail : ''));
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify(ev));
   }
 
   function show(line) {
@@ -175,57 +174,18 @@
   function paint() {
     elSince.textContent = lastCheck ? 'checked ' + ago(Date.now() - lastCheck)
                                     : 'connecting';
-    var live = ws && ws.readyState === 1;
-    elState.textContent = live ? 'socket live' : 'socket down';
-    elState.className = live ? 'live' : 'down';
-    elNums.textContent = secs() + 's  ping ' + pings + '  beacon ' + beacons
-                       + '  reconnect ' + reconnects;
+    elState.textContent = lastCheck ? 'polling' : 'starting';
+    elState.className = lastCheck ? 'live' : 'down';
+    elNums.textContent = secs() + 's  beacon ' + beacons;
   }
 
-  // Networking is on neither the supported nor the unsupported list in
-  // Meta's docs, so establish what exists before testing how it behaves.
-  // A socket that never opened must not be read as a backgrounding failure.
   function probe() {
     // Report the frame the device actually gives us, rather than assuming
     // it matches the 600x600 the docs specify.
     mark('viewport', window.innerWidth + 'x' + window.innerHeight
                    + ' dpr' + (window.devicePixelRatio || 1)
                    + ' screen' + screen.width + 'x' + screen.height);
-    mark('has-ws', typeof WebSocket);
-    mark('has-es', typeof EventSource);
     mark('has-fetch', typeof fetch);
-    if (typeof WebSocket === 'undefined') {
-      mark('verdict', 'NO WEBSOCKET ON DEVICE');
-      elState.textContent = 'no websocket';
-      return false;
-    }
-    return true;
-  }
-
-  function connect() {
-    if (typeof WebSocket === 'undefined') return;
-    var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    ws = new WebSocket(proto + location.host + '/ws?s=' + SESSION);
-    ws.onopen = function () {
-      backoff = 1000;
-      everOpened = true;
-      mark('ws-open');
-      drain();
-      paint();
-    };
-    ws.onclose = function (e) {
-      // Distinguish "never worked here" from "worked, then dropped".
-      mark(everOpened ? 'ws-close' : 'ws-never-opened', 'code=' + e.code);
-      paint();
-      retry();
-    };
-    ws.onerror = function () { mark('ws-error'); };
-  }
-
-  function retry() {
-    reconnects++;
-    setTimeout(connect, backoff);
-    backoff = Math.min(backoff * 2, 15000);
   }
 
   // --- card loop ------------------------------------------------------
@@ -271,7 +231,18 @@
       return;
     }
     var card = showing;
-    elLabel.textContent = card.title || '';
+    // The ticket tail disambiguates two cards whose text reads identically.
+    // Without it a wearer cannot tell which one they are answering.
+    elLabel.textContent = (card.title || '') +
+      (card.ticket ? '  · ' + card.ticket.slice(-4) : '');
+
+    // Tell the server it is actually on screen. Delivery to the poll queue
+    // is not the same as being rendered, and only the client knows which.
+    fetch('/api/ack', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket: card.ticket })
+    }).catch(function () {});
     elBody.textContent = card.kind === 'notify'
       ? card.line
       : card.body + (card.detail ? ' — ' + card.detail : '');
@@ -418,14 +389,9 @@
       });
   }
 
-  // Two independent heartbeats. If the socket dies but beacons keep
-  // arriving, the page is alive and only the connection dropped. If both
-  // stop, the whole app was suspended.
-  setInterval(function () {
-    if (ws && ws.readyState === 1) { pings++; ws.send(JSON.stringify(
-      { t: Date.now(), at: secs(), kind: 'ping', n: pings, session: SESSION })); }
-    paint();
-  }, 5000);
+  // The beacon is the liveness record the backgrounding test reads: if it
+  // keeps arriving while the app is out of view, the page is still running.
+  setInterval(paint, 5000);
 
   setInterval(function () {
     beacons++;
@@ -516,7 +482,8 @@
   if (elImu.hidden) startIMU();
 
   mark('load');
-  if (probe()) connect();
+  probe();
+  drain();
   poll();
   paint();
 })();
