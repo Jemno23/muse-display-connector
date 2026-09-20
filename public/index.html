@@ -58,6 +58,11 @@
                color: #ffc98a; margin-bottom: 12px; }
   #cardBody { font-size: 34px; font-weight: 600; line-height: 1.25;
               color: #ffffff; margin-bottom: 24px; }
+  /* What dwelling reveals. Warm rather than white so it reads as the
+     character's own voice and not another line of the card. */
+  #cardMore { font-size: 24px; font-weight: 500; line-height: 1.35;
+              color: #ffd79a; margin: -8px 0 22px; }
+  #cardMore.pending { color: #b9a982; }
   #cardOpts { display: flex; flex-direction: column; gap: 12px; }
   #cardOpts .focusable { font-size: 26px; padding: 16px 22px; text-align: left; }
 </style>
@@ -69,6 +74,7 @@
   <div id="card" hidden>
     <div id="cardLabel"></div>
     <div id="cardBody"></div>
+    <div id="cardMore" hidden></div>
     <div id="cardOpts"></div>
   </div>
 
@@ -115,6 +121,7 @@
   var elLabel = document.getElementById('cardLabel');
   var elBody  = document.getElementById('cardBody');
   var elOpts  = document.getElementById('cardOpts');
+  var elMore  = document.getElementById('cardMore');
 
   function secs() { return Math.round((Date.now() - T0) / 1000); }
 
@@ -252,6 +259,10 @@
 
   function next() {
     showing = queue.shift() || null;
+    // A new card means the previous dwell is meaningless.
+    resetDwell();
+    elMore.hidden = true;
+    elMore.textContent = '';
     if (!showing) {
       elCard.hidden = true;
       elIdle.hidden = false;
@@ -282,6 +293,98 @@
     var first = elOpts.querySelector('.focusable');
     if (first) first.focus();
   }
+
+  // --- dwell to think --------------------------------------------------
+  // Head stillness is an involuntary, zero-effort input: holding your gaze
+  // on something IS the signal that you want more of it. The ladder spends
+  // nothing on a glance and escalates only while attention persists.
+  //
+  //   ~600ms   reveal the detail the agent already attached (free, local)
+  //   ~1500ms  ask Muse Spark at high effort
+  //   ~3000ms  ask again at xhigh
+  //
+  // Looking away aborts whatever is in flight and resets the ladder, so an
+  // abandoned card never bills for reasoning nobody reads.
+  var STILL_DEG = 2.0;       // per-sample movement under this counts as still
+  var TIER_MS = [600, 1500, 3000];
+  var stillSince = 0, lastOri = null, tier = 0, inflight = null;
+
+  function resetDwell() {
+    stillSince = 0;
+    tier = 0;
+    if (inflight) { inflight.abort(); inflight = null; }
+    elChar.classList.remove('thinking');
+  }
+
+  function onOrientation(e) {
+    var cur = { a: e.alpha || 0, b: e.beta || 0, g: e.gamma || 0 };
+    if (lastOri) {
+      var da = Math.abs(cur.a - lastOri.a);
+      if (da > 180) da = 360 - da;            // alpha wraps at 0/360
+      var moved = da + Math.abs(cur.b - lastOri.b) + Math.abs(cur.g - lastOri.g);
+      if (moved < STILL_DEG) {
+        if (!stillSince) stillSince = Date.now();
+      } else if (stillSince) {
+        resetDwell();
+      }
+    }
+    lastOri = cur;
+  }
+
+  function dwellTick() {
+    if (!showing || showing.kind === 'notify' || !stillSince) return;
+    var held = Date.now() - stillSince;
+
+    if (tier === 0 && held > TIER_MS[0]) {
+      tier = 1;
+      if (showing.detail) {
+        elMore.textContent = showing.detail;
+        elMore.className = '';
+        elMore.hidden = false;
+      }
+    }
+    if (tier === 1 && held > TIER_MS[1]) { tier = 2; askSpark('high'); }
+    if (tier === 2 && held > TIER_MS[2]) { tier = 3; askSpark('xhigh'); }
+  }
+
+  function askSpark(effort) {
+    var card = showing;
+    if (!card) return;
+    if (inflight) inflight.abort();
+    inflight = new AbortController();
+    elChar.classList.add('thinking');
+    elMore.textContent = 'thinking…';
+    elMore.className = 'pending';
+    elMore.hidden = false;
+    mark('dwell', effort);
+
+    fetch('/api/think', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ card: card, effort: effort }),
+      signal: inflight.signal
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (showing !== card) return;          // they moved on; drop it
+        if (d && d.ok && d.text) {
+          elMore.textContent = d.text;
+          elMore.className = '';
+          mark('thought', effort);
+        } else {
+          // No key, or upstream trouble. Fall back to what we already had
+          // rather than leaving "thinking…" on the glass.
+          elMore.textContent = card.detail || '';
+          elMore.className = '';
+          elMore.hidden = !card.detail;
+          mark('think-fail', (d && d.reason) || 'unknown');
+        }
+      })
+      .catch(function () { /* aborted by look-away, or offline */ })
+      .then(function () { elChar.classList.remove('thinking'); });
+  }
+
+  setInterval(dwellTick, 200);
 
   function answer(card, choice, index) {
     quietSince = Date.now();
@@ -322,26 +425,32 @@
 
   // The IMU permission must come from a user gesture, so dwell-to-think
   // needs this pinch before head stillness can be read.
+  // Starts the orientation feed that dwell-to-think reads. Called from the
+  // grant button, and again on later loads once the grant is remembered —
+  // otherwise dwell would only ever work in the session you first allowed it.
+  var imuRunning = false;
+  function startIMU() {
+    if (imuRunning) return;
+    imuRunning = true;
+    window.addEventListener('deviceorientation', function once(e) {
+      mark('imu-ok', 'alpha=' + Math.round(e.alpha || 0));
+      try { localStorage.setItem('spike.imu', 'ok'); } catch (err) {}
+      elImu.hidden = true;
+      window.removeEventListener('deviceorientation', once);
+    });
+    window.addEventListener('deviceorientation', onOrientation);
+  }
+
   elImu.addEventListener('click', function () {
-    function start() {
-      window.addEventListener('deviceorientation', function once(e) {
-        mark('imu-ok', 'alpha=' + Math.round(e.alpha || 0));
-        // Granted once, never asked again — the prompt has no business
-        // sitting on a resting screen forever.
-        try { localStorage.setItem('spike.imu', 'ok'); } catch (err) {}
-        elImu.hidden = true;
-        window.removeEventListener('deviceorientation', once);
-      });
-    }
     if (typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function') {
       DeviceOrientationEvent.requestPermission().then(function (s) {
         mark('imu-perm', s);
-        if (s === 'granted') start();
+        if (s === 'granted') startIMU();
       }).catch(function () { mark('imu-perm', 'error'); });
     } else {
       mark('imu-perm', 'implicit');
-      start();
+      startIMU();
     }
   });
 
@@ -373,6 +482,7 @@
     elImu.hidden = localStorage.getItem('spike.imu') === 'ok';
   } catch (e) { elImu.hidden = false; }
   if (new URLSearchParams(location.search).has('debug')) elDebug.hidden = false;
+  if (elImu.hidden) startIMU();
 
   mark('load');
   if (probe()) connect();
