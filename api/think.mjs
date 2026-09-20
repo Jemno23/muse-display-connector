@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   const effort = b.effort || 'high';
 
   const ctl = new AbortController();
-  const bail = setTimeout(() => ctl.abort(), 20_000);
+  const bail = setTimeout(() => ctl.abort(), 30_000);
 
   try {
     const out = await think({ card, effort, signal: ctl.signal });
