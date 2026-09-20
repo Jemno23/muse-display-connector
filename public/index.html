@@ -63,6 +63,21 @@
   #cardMore { font-size: 24px; font-weight: 500; line-height: 1.35;
               color: #ffd79a; margin: -8px 0 22px; }
   #cardMore.pending { color: #b9a982; }
+  /* The catch-up. Nothing can wake this display, so returning to it is the
+     moment the wearer finds out what happened — one screen, not a stack of
+     cards to pinch through. */
+  #digest { width: 100%; flex: 1 1 auto; min-height: 0; overflow: hidden;
+            display: flex; flex-direction: column; }
+  #digestLabel { font-size: 18px; font-weight: 700; letter-spacing: 0.12em;
+                 color: #ffc98a; margin-bottom: 16px; }
+  #digestRows { display: flex; flex-direction: column; gap: 2px; margin-bottom: 20px; }
+  #digestRows .row { display: flex; justify-content: space-between; gap: 16px;
+                     font-size: 24px; font-weight: 500; color: #f2e8d2;
+                     padding-bottom: 12px; border-bottom: 2px solid #2a2721; }
+  #digestRows .row span:first-child { overflow: hidden; text-overflow: ellipsis;
+                                      white-space: nowrap; }
+  #digestRows .row .when { color: #9c9483; flex-shrink: 0; }
+  #digestRows .row .needs { color: #ffffff; font-weight: 600; flex-shrink: 0; }
   #cardOpts { display: flex; flex-direction: column; gap: 12px; }
   #cardOpts .focusable { font-size: 26px; padding: 16px 22px; text-align: left; }
 </style>
@@ -76,6 +91,12 @@
     <div id="cardBody"></div>
     <div id="cardMore" hidden></div>
     <div id="cardOpts"></div>
+  </div>
+
+  <div id="digest" hidden>
+    <div id="digestLabel">WHILE YOU WERE OUT</div>
+    <div id="digestRows"></div>
+    <div id="digestOpts"></div>
   </div>
 
   <div id="idle">
@@ -122,6 +143,9 @@
   var elBody  = document.getElementById('cardBody');
   var elOpts  = document.getElementById('cardOpts');
   var elMore  = document.getElementById('cardMore');
+  var elDigest = document.getElementById('digest');
+  var elRows   = document.getElementById('digestRows');
+  var elDigestOpts = document.getElementById('digestOpts');
 
   function secs() { return Math.round((Date.now() - T0) / 1000); }
 
@@ -192,7 +216,7 @@
   // Short-poll, not long-poll. A serverless function caps how long a
   // request may live, and a second or two of latency is nothing against
   // an agent whose cadence is minutes. Backs off while nothing happens.
-  var queue = [], showing = null, lastCheck = 0;
+  var queue = [], showing = null, lastCheck = 0, digesting = false;
 
   // Back off on visibility, not on elapsed quiet. The old time-based
   // ladder dropped to 12s after a few idle minutes, so the first card
@@ -213,10 +237,79 @@
         if (!cards.length) { paint(); return; }
         mark('cards', String(cards.length));
         queue = queue.concat(cards);
-        if (!showing) next();
+        if (digesting || showing) return;
+        // More than one thing waiting means the wearer has been away.
+        if (queue.length > 1) showDigest(); else next();
       })
       .catch(function () { /* offline is not an error here */ })
       .then(function () { setTimeout(poll, pollDelay()); });
+  }
+
+  // --- the catch-up ----------------------------------------------------
+  // When several things are waiting, showing them one at a time makes the
+  // wearer pinch through a backlog to find the one that matters. A single
+  // screen says what happened and what still needs them; only decisions
+  // then get a card of their own.
+  function clockOf(ts) {
+    if (!ts || Date.now() - ts < 120000) return 'now';
+    var d = new Date(ts);
+    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+
+  function ack(ticket) {
+    fetch('/api/ack', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket: ticket })
+    }).catch(function () {});
+  }
+
+  function showDigest() {
+    digesting = true;
+    resetDwell();
+    elCard.hidden = true;
+    elIdle.hidden = true;
+    elDigest.hidden = false;
+    elRows.textContent = '';
+    elDigestOpts.textContent = '';
+
+    var decisions = 0;
+    queue.slice(0, 5).forEach(function (c) {
+      var row = document.createElement('div');
+      row.className = 'row';
+      var what = document.createElement('span');
+      what.textContent = c.kind === 'notify' ? c.line : c.body;
+      var when = document.createElement('span');
+      if (c.kind === 'notify') {
+        when.className = 'when';
+        when.textContent = clockOf(c.at);
+        ack(c.ticket);            // reading it here counts as seeing it
+      } else {
+        when.className = 'needs';
+        when.textContent = 'needs you';
+        decisions++;
+      }
+      row.appendChild(what);
+      row.appendChild(when);
+      elRows.appendChild(row);
+    });
+
+    var b = document.createElement('button');
+    b.className = 'focusable';
+    b.textContent = decisions
+      ? (decisions === 1 ? 'Review it' : 'Review ' + decisions)
+      : 'Got it';
+    b.addEventListener('click', function () {
+      digesting = false;
+      elDigest.hidden = true;
+      // The lines have been read; only decisions still deserve a card.
+      queue = queue.filter(function (c) { return c.kind !== 'notify'; });
+      next();
+    });
+    elDigestOpts.appendChild(b);
+    b.focus();
+    setTimeout(function () { if (digesting) b.focus(); }, 80);
+    mark('digest', String(queue.length));
   }
 
   function next() {
@@ -238,11 +331,7 @@
 
     // Tell the server it is actually on screen. Delivery to the poll queue
     // is not the same as being rendered, and only the client knows which.
-    fetch('/api/ack', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticket: card.ticket })
-    }).catch(function () {});
+    ack(card.ticket);
     elBody.textContent = card.kind === 'notify'
       ? card.line
       : card.body + (card.detail ? ' — ' + card.detail : '');
