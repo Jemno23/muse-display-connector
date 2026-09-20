@@ -290,8 +290,13 @@
       b.addEventListener('click', function () { answer(card, label, i); });
       elOpts.appendChild(b);
     });
+    // Focus twice: once now, once after the element has actually been laid
+    // out. The second call is what makes the first pinch land reliably.
     var first = elOpts.querySelector('.focusable');
-    if (first) first.focus();
+    if (first) {
+      first.focus();
+      setTimeout(function () { if (showing === card) first.focus(); }, 80);
+    }
   }
 
   // --- dwell to think --------------------------------------------------
@@ -396,8 +401,20 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ticket: card.ticket, choice: choice, index: index })
-    }).catch(function () {});
-    next();
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('http ' + r.status);
+        mark('pinch-ok', choice);
+        next();
+      })
+      .catch(function () {
+        // A lost answer must never look like a delivered one. Keep the card
+        // up and say so, rather than advancing as if it went through.
+        mark('pinch-fail', choice);
+        elMore.textContent = 'not sent — pinch again';
+        elMore.className = 'pending';
+        elMore.hidden = false;
+      });
   }
 
   // Two independent heartbeats. If the socket dies but beacons keep
@@ -470,8 +487,18 @@
       case 'ArrowDown': case 'ArrowRight':
         f[i < f.length - 1 ? i + 1 : 0].focus(); break;
       case 'Enter':
-        if (document.activeElement.classList.contains('focusable'))
-          document.activeElement.click();
+        mark('enter', document.activeElement && document.activeElement.textContent
+          ? document.activeElement.textContent.slice(0, 20) : 'nothing-focused');
+        var active = document.activeElement;
+        if (active && active.classList.contains('focusable')) {
+          active.click();
+        } else if (f.length) {
+          // Focus does not always land on an element that was revealed a
+          // moment ago in this webview. A pinch must still commit the
+          // default rather than silently doing nothing.
+          f[0].focus();
+          f[0].click();
+        }
         break;
       case 'Escape': mark('escape'); break;
       default: return;
