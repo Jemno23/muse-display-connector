@@ -300,13 +300,17 @@
   // nothing on a glance and escalates only while attention persists.
   //
   //   ~600ms   reveal the detail the agent already attached (free, local)
-  //   ~1500ms  ask Muse Spark at high effort
-  //   ~3000ms  ask again at xhigh
+  //   ~1400ms  ask Muse Spark at minimal effort, which lands ~4s later
+  //
+  // The ladder stops there on purpose. Measured round trips were 4s at
+  // minimal, 12s at low, 14s at medium and over 20s above that — and
+  // nobody holds their gaze on a heads-up display for twelve seconds.
+  // Latency, not reasoning depth, is what bounds thinking on this surface.
   //
   // Looking away aborts whatever is in flight and resets the ladder, so an
   // abandoned card never bills for reasoning nobody reads.
   var STILL_DEG = 2.0;       // per-sample movement under this counts as still
-  var TIER_MS = [600, 1500, 3000];
+  var TIER_MS = [600, 1400];
   var stillSince = 0, lastOri = null, tier = 0, inflight = null;
 
   function resetDwell() {
@@ -343,8 +347,7 @@
         elMore.hidden = false;
       }
     }
-    if (tier === 1 && held > TIER_MS[1]) { tier = 2; askSpark('high'); }
-    if (tier === 2 && held > TIER_MS[2]) { tier = 3; askSpark('xhigh'); }
+    if (tier === 1 && held > TIER_MS[1]) { tier = 2; askSpark('minimal'); }
   }
 
   function askSpark(effort) {
