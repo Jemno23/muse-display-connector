@@ -4,7 +4,7 @@ import { handlePending } from '../lib/api.mjs';
 const store = openStore();
 
 export default async function handler(req, res) {
-  const out = await handlePending(store, req.query.s);
+  const out = await handlePending(store, req.query.s, console.log);
   res.writeHead(out.status, out.headers);
   res.end(out.body);
 }
